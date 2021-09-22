@@ -28,12 +28,6 @@ func loadDictEmbed() {
 	seg.LoadStopEmbed()
 }
 
-func loadDict() {
-	// var seg gse.Segmenter
-	seg.LoadDict("zh, ../../testdata/test_dict.txt, ../../testdata/test_dict1.txt")
-	seg.LoadStop()
-}
-
 func loadDictMap() {
 	m := []map[string]string{
 		{
