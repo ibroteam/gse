@@ -33,6 +33,11 @@ var (
 	ToLower = true
 )
 
+const (
+	zhS1 = "dict/zh/s_1.txt"
+	zhT1 = "dict/zh/t_1.txt"
+)
+
 // Init init seg config
 func (seg *Segmenter) Init() {
 	if seg.MinTokenFreq == 0 {
@@ -49,24 +54,40 @@ func (seg *Segmenter) Dictionary() *Dictionary {
 	return seg.Dict
 }
 
-// AddToken add new text to token
-func (seg *Segmenter) AddToken(text string, frequency float64, pos ...string) error {
+// ToToken make the text, freq and pos to token structure
+func (seg *Segmenter) ToToken(text string, freq float64, pos ...string) Token {
 	var po string
 	if len(pos) > 0 {
 		po = pos[0]
 	}
 
 	words := seg.SplitTextToWords([]byte(text))
-	token := Token{text: words, frequency: frequency, pos: po}
+	token := Token{text: words, freq: freq, pos: po}
+	return token
+}
 
-	return seg.Dict.addToken(token)
+// AddToken add new text to token
+func (seg *Segmenter) AddToken(text string, freq float64, pos ...string) error {
+	token := seg.ToToken(text, freq, pos...)
+	return seg.Dict.AddToken(token)
 }
 
 // AddTokenForce add new text to token and force
 // time-consuming
-func (seg *Segmenter) AddTokenForce(text string, frequency float64, pos ...string) {
-	seg.AddToken(text, frequency, pos...)
+func (seg *Segmenter) AddTokenForce(text string, freq float64, pos ...string) (err error) {
+	err = seg.AddToken(text, freq, pos...)
 	seg.CalcToken()
+	return
+}
+
+// ReAddToken remove and add token again
+func (seg *Segmenter) ReAddToken(text string, freq float64, pos ...string) error {
+	token := seg.ToToken(text, freq, pos...)
+	err := seg.Dict.RemoveToken(token)
+	if err != nil {
+		return err
+	}
+	return seg.Dict.AddToken(token)
 }
 
 // RemoveToken remove token in dictionary
@@ -77,6 +98,12 @@ func (seg *Segmenter) RemoveToken(text string) error {
 	return seg.Dict.RemoveToken(token)
 }
 
+// Empty empty the seg dictionary
+func (seg *Segmenter) Empty() error {
+	seg.Dict = nil
+	return nil
+}
+
 // LoadDictMap load dictionary from []map[string]string
 func (seg *Segmenter) LoadDictMap(dict []map[string]string) error {
 	if seg.Dict == nil {
@@ -85,15 +112,15 @@ func (seg *Segmenter) LoadDictMap(dict []map[string]string) error {
 	}
 
 	for _, d := range dict {
-		// Parse word frequency
-		frequency := seg.Size(len(d), d["text"], d["frequency"])
-		if frequency == 0.0 {
+		// Parse the word frequency
+		freq := seg.Size(len(d), d["text"], d["freq"])
+		if freq == 0.0 {
 			continue
 		}
 
 		words := seg.SplitTextToWords([]byte(d["text"]))
-		token := Token{text: words, frequency: frequency, pos: d["pos"]}
-		seg.Dict.addToken(token)
+		token := Token{text: words, freq: freq, pos: d["pos"]}
+		seg.Dict.AddToken(token)
 	}
 
 	seg.CalcToken()
@@ -158,9 +185,15 @@ func (seg *Segmenter) LoadDict(files ...string) error {
 	}
 
 	if len(files) == 0 {
-		dictPath = path.Join(dictDir, "dict/dictionary.txt")
+		dictPath = path.Join(dictDir, zhS1)
+		path1 := path.Join(dictDir, zhT1)
 		// files = []string{dictPath}
 		err := seg.Read(dictPath)
+		if err != nil {
+			return err
+		}
+
+		err = seg.Read(path1)
 		if err != nil {
 			return err
 		}
@@ -184,7 +217,7 @@ func (seg *Segmenter) LoadDict(files ...string) error {
 	return nil
 }
 
-// GetCurrentFilePath get current file path
+// GetCurrentFilePath get the current file path
 func GetCurrentFilePath() string {
 	_, filePath, _, _ := runtime.Caller(1)
 	return filePath
@@ -194,7 +227,7 @@ func GetCurrentFilePath() string {
 func GetIdfPath(files ...string) []string {
 	var (
 		dictDir  = path.Join(path.Dir(GetCurrentFilePath()), "data")
-		dictPath = path.Join(dictDir, "idf.txt")
+		dictPath = path.Join(dictDir, "dict/zh/idf.txt")
 	)
 
 	files = append(files, dictPath)
@@ -220,7 +253,7 @@ func (seg *Segmenter) Read(file string) error {
 }
 
 // Size frequency is calculated based on the size of the text
-func (seg *Segmenter) Size(size int, text, freqText string) (frequency float64) {
+func (seg *Segmenter) Size(size int, text, freqText string) (freq float64) {
 	if size == 0 {
 		// 文件结束或错误行
 		// continue
@@ -238,20 +271,20 @@ func (seg *Segmenter) Size(size int, text, freqText string) (frequency float64) 
 
 	// 解析词频
 	var err error
-	frequency, err = strconv.ParseFloat(freqText, 64)
+	freq, err = strconv.ParseFloat(freqText, 64)
 	if err != nil {
 		// continue
 		return
 	}
 
 	// 过滤频率太小的词
-	if frequency < seg.MinTokenFreq {
+	if freq < seg.MinTokenFreq {
 		return 0.0
 	}
 
 	// 过滤长度为1的词, 降低词频
 	if len([]rune(text)) < 2 {
-		frequency = 2
+		freq = 2
 	}
 
 	return
@@ -262,7 +295,7 @@ func (seg *Segmenter) Reader(reader io.Reader, files ...string) error {
 	var (
 		file           string
 		text, freqText string
-		frequency      float64
+		freq           float64
 		pos            string
 	)
 
@@ -292,20 +325,20 @@ func (seg *Segmenter) Reader(reader io.Reader, files ...string) error {
 			}
 		}
 
-		frequency = seg.Size(size, text, freqText)
-		if frequency == 0.0 {
+		freq = seg.Size(size, text, freqText)
+		if freq == 0.0 {
 			continue
 		}
 
 		if size == 2 {
-			// 没有词性标注时设为空字符串
+			// 没有词性, 标注为空字符串
 			pos = ""
 		}
 
 		// 将分词添加到字典中
 		words := seg.SplitTextToWords([]byte(text))
-		token := Token{text: words, frequency: frequency, pos: pos}
-		seg.Dict.addToken(token)
+		token := Token{text: words, freq: freq, pos: pos}
+		seg.Dict.AddToken(token)
 	}
 
 	return nil
@@ -319,20 +352,6 @@ func DictPaths(dictDir, filePath string) (files []string) {
 		return
 	}
 
-	if filePath == "zh" {
-		dictPath = path.Join(dictDir, "dict/dictionary.txt")
-		files = []string{dictPath}
-
-		return
-	}
-
-	if filePath == "jp" {
-		dictPath = path.Join(dictDir, "dict/jp/dict.txt")
-		files = []string{dictPath}
-
-		return
-	}
-
 	var fileName []string
 	if strings.Contains(filePath, ", ") {
 		fileName = strings.Split(filePath, ", ")
@@ -341,19 +360,32 @@ func DictPaths(dictDir, filePath string) (files []string) {
 	}
 
 	for i := 0; i < len(fileName); i++ {
-		if fileName[i] == "jp" {
+		if fileName[i] == "ja" || fileName[i] == "jp" {
 			dictPath = path.Join(dictDir, "dict/jp/dict.txt")
 		}
 
 		if fileName[i] == "zh" {
-			dictPath = path.Join(dictDir, "dict/dictionary.txt")
+			dictPath = path.Join(dictDir, zhS1)
+			path1 := path.Join(dictDir, zhT1)
+			files = append(files, path1)
+		}
+
+		if fileName[i] == "zh_s" {
+			dictPath = path.Join(dictDir, zhS1)
+		}
+
+		if fileName[i] == "zh_t" {
+			dictPath = path.Join(dictDir, zhT1)
 		}
 
 		// if str[i] == "ti" {
 		// }
 
-		dictName := fileName[i] != "en" && fileName[i] != "zh" &&
-			fileName[i] != "jp" && fileName[i] != "ti"
+		dictName := fileName[i] != "en" &&
+			fileName[i] != "zh" &&
+			fileName[i] != "zh_s" && fileName[i] != "zh_t" &&
+			fileName[i] != "ja" && fileName[i] != "jp" &&
+			fileName[i] != "ko" && fileName[i] != "ti"
 
 		if dictName {
 			dictPath = fileName[i]
@@ -368,7 +400,7 @@ func DictPaths(dictDir, filePath string) (files []string) {
 	return
 }
 
-// IsJp is jp char return true
+// IsJp is Japan char return true
 func IsJp(segText string) bool {
 	for _, r := range segText {
 		jp := unicode.Is(unicode.Scripts["Hiragana"], r) ||
@@ -383,10 +415,10 @@ func IsJp(segText string) bool {
 // CalcToken calc the segmenter token
 func (seg *Segmenter) CalcToken() {
 	// 计算每个分词的路径值，路径值含义见 Token 结构体的注释
-	logTotalFrequency := float32(math.Log2(seg.Dict.totalFrequency))
+	logTotalFreq := float32(math.Log2(seg.Dict.totalFreq))
 	for i := range seg.Dict.Tokens {
 		token := &seg.Dict.Tokens[i]
-		token.distance = logTotalFrequency - float32(math.Log2(token.frequency))
+		token.distance = logTotalFreq - float32(math.Log2(token.freq))
 	}
 
 	// 对每个分词进行细致划分，用于搜索引擎模式，
@@ -398,9 +430,6 @@ func (seg *Segmenter) CalcToken() {
 		// 计算需要添加的子分词数目
 		numTokensToAdd := 0
 		for iToken := 0; iToken < len(segments); iToken++ {
-			// if len(segments[iToken].token.text) > 1 {
-			// 略去字元长度为一的分词
-			// TODO: 这值得进一步推敲，特别是当字典中有英文复合词的时候
 			if len(segments[iToken].token.text) > 0 {
 				hasJp := false
 				if len(segments[iToken].token.text) == 1 {
@@ -418,7 +447,6 @@ func (seg *Segmenter) CalcToken() {
 		// 添加子分词
 		iSegmentsToAdd := 0
 		for iToken := 0; iToken < len(segments); iToken++ {
-			// if len(segments[iToken].token.text) > 1 {
 			if len(segments[iToken].token.text) > 0 {
 				hasJp := false
 				if len(segments[iToken].token.text) == 1 {

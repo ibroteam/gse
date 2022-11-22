@@ -15,6 +15,7 @@
 package gse
 
 import (
+	"bytes"
 	"math"
 	"regexp"
 	"strings"
@@ -30,11 +31,11 @@ const (
 var reEng = regexp.MustCompile(`[[:alnum:]]`)
 
 type route struct {
-	frequency float64
-	index     int
+	freq  float64
+	index int
 }
 
-// Find find word in dictionary return word's frequency and existence
+// Find find word in dictionary return word's freq, pos and existence
 func (seg *Segmenter) Find(str string) (float64, string, bool) {
 	return seg.Dict.Find([]byte(str))
 }
@@ -44,18 +45,67 @@ func (seg *Segmenter) Value(str string) (int, int, error) {
 	return seg.Dict.Value([]byte(str))
 }
 
+// FindAllOccs find the all search byte start in data
+func FindAllOccs(data []byte, searches []string) map[string][]int {
+	results := make(map[string][]int, 0)
+	tmp := data
+	for _, search := range searches {
+		index := len(data)
+		for {
+			match := bytes.LastIndex(tmp[0:index], []byte(search))
+			if match == -1 {
+				break
+			}
+
+			index = match
+			results[search] = append(results[search], match)
+		}
+	}
+
+	return results
+}
+
 // Analyze analyze the token segment info
-func (seg *Segmenter) Analyze(text []string) (az []AnalyzeToken) {
+func (seg *Segmenter) Analyze(text []string, t1 string, by ...bool) (az []AnalyzeToken) {
 	if len(text) <= 0 {
 		return
 	}
 
-	start := 0
-	end := len([]rune(text[0]))
+	start, end := 0, 0
+	if t1 == "" {
+		if len(by) > 0 {
+			end = len([]rune(text[0]))
+		} else {
+			end = len([]byte(text[0]))
+		}
+	}
+
+	isEx := make(map[string]int, 0)
+	if ToLower {
+		t1 = strings.ToLower(t1)
+	}
+	all := FindAllOccs([]byte(t1), text)
 	for k, v := range text {
-		if k > 0 {
+		if k > 0 && t1 == "" {
 			start = az[k-1].End
-			end = az[k-1].End + len([]rune(v))
+			if len(by) > 0 {
+				end = az[k-1].End + len([]rune(v))
+			} else {
+				end = az[k-1].End + len([]byte(v))
+			}
+		}
+
+		if t1 != "" {
+			if _, ok := isEx[v]; ok {
+				isEx[v]++
+			} else {
+				isEx[v] = 0
+			}
+
+			if len(all[v]) > 0 {
+				start = all[v][isEx[v]]
+			}
+			end = start + len([]byte(v))
 		}
 
 		freq, pos, _ := seg.Find(v)
@@ -63,9 +113,10 @@ func (seg *Segmenter) Analyze(text []string) (az []AnalyzeToken) {
 			Position: k,
 			Start:    start,
 			End:      end,
-			Text:     v,
-			Freq:     freq,
-			Pos:      pos,
+
+			Text: v,
+			Freq: freq,
+			Pos:  pos,
 		})
 	}
 
@@ -118,27 +169,27 @@ func (seg *Segmenter) calc(runes []rune) map[int]route {
 	n := len(runes)
 	rs := make(map[int]route)
 
-	rs[n] = route{frequency: 0.0, index: 0}
+	rs[n] = route{freq: 0.0, index: 0}
 	var r route
 
-	logT := math.Log(seg.Dict.totalFrequency)
+	logT := math.Log(seg.Dict.totalFreq)
 	for idx := n - 1; idx >= 0; idx-- {
 		for _, i := range dag[idx] {
 			freq, _, ok := seg.Find(string(runes[idx : i+1]))
 
 			if ok {
-				f := math.Log(freq) - logT + rs[i+1].frequency
-				r = route{frequency: f, index: i}
+				f := math.Log(freq) - logT + rs[i+1].freq
+				r = route{freq: f, index: i}
 			} else {
-				f := math.Log(1.0) - logT + rs[i+1].frequency
-				r = route{frequency: f, index: i}
+				f := math.Log(1.0) - logT + rs[i+1].freq
+				r = route{freq: f, index: i}
 			}
 
 			if v, ok := rs[idx]; !ok {
 				rs[idx] = r
 			} else {
-				f := v.frequency == r.frequency && v.index < r.index
-				if v.frequency < r.frequency || f {
+				f := v.freq == r.freq && v.index < r.index
+				if v.freq < r.freq || f {
 					rs[idx] = r
 				}
 			}
@@ -148,11 +199,11 @@ func (seg *Segmenter) calc(runes []rune) map[int]route {
 	return rs
 }
 
-func (seg *Segmenter) hmm(bufString string, buf []rune) (result []string) {
+func (seg *Segmenter) hmm(bufString string, buf []rune, reg ...*regexp.Regexp) (result []string) {
 
 	v, _, ok := seg.Find(bufString)
 	if !ok || v == 0 {
-		result = append(result, seg.HMMCut(bufString)...)
+		result = append(result, seg.HMMCut(bufString, reg...)...)
 		return
 	}
 
@@ -162,11 +213,14 @@ func (seg *Segmenter) hmm(bufString string, buf []rune) (result []string) {
 	return
 }
 
-func (seg *Segmenter) cutDAG(str string) []string {
+func (seg *Segmenter) cutDAG(str string, reg ...*regexp.Regexp) []string {
 
 	mLen := int(float32(len(str))/RatioWord) + 1
 	result := make([]string, 0, mLen)
 
+	if ToLower {
+		str = strings.ToLower(str)
+	}
 	runes := []rune(str)
 	routes := seg.calc(runes)
 
@@ -186,7 +240,7 @@ func (seg *Segmenter) cutDAG(str string) []string {
 				if len(buf) == 1 {
 					result = append(result, bufString)
 				} else {
-					result = append(result, seg.hmm(bufString, buf)...)
+					result = append(result, seg.hmm(bufString, buf, reg...)...)
 				}
 
 				buf = make([]rune, 0)
@@ -204,7 +258,7 @@ func (seg *Segmenter) cutDAG(str string) []string {
 		if len(buf) == 1 {
 			result = append(result, bufString)
 		} else {
-			result = append(result, seg.hmm(bufString, buf)...)
+			result = append(result, seg.hmm(bufString, buf, reg...)...)
 		}
 	}
 
@@ -215,6 +269,9 @@ func (seg *Segmenter) cutDAGNoHMM(str string) []string {
 	mLen := int(float32(len(str))/RatioWord) + 1
 	result := make([]string, 0, mLen)
 
+	if ToLower {
+		str = strings.ToLower(str)
+	}
 	runes := []rune(str)
 	routes := seg.calc(runes)
 	length := len(runes)
@@ -253,6 +310,9 @@ func (seg *Segmenter) cutAll(str string) []string {
 	mLen := int(float32(len(str))/RatioWord) + 1
 	result := make([]string, 0, mLen)
 
+	if ToLower {
+		str = strings.ToLower(str)
+	}
 	runes := []rune(str)
 	dag := seg.getDag(runes)
 	start := -1
@@ -313,58 +373,57 @@ func (seg *Segmenter) cutForSearch(str string, hmm ...bool) []string {
 }
 
 // SuggestFreq suggest the words frequency
-// returns a suggested frequncy of a word
-// cutted into several short words.
+// return a suggested frequency of a word cutted to short words.
 func (seg *Segmenter) SuggestFreq(words ...string) float64 {
-	frequency := 1.0
-	total := seg.Dict.totalFrequency
+	freq := 1.0
+	total := seg.Dict.totalFreq
 
 	if len(words) > 1 {
 		for _, word := range words {
-			freq, _, ok := seg.Find(word)
+			v, _, ok := seg.Find(word)
 			if ok {
-				frequency *= freq
+				freq *= v
 			}
 
-			frequency /= total
+			freq /= total
 		}
 
-		frequency, _ = math.Modf(frequency * total)
+		freq, _ = math.Modf(freq * total)
 		wordFreq := 0.0
-		freq, _, ok := seg.Find(strings.Join(words, ""))
+		v, _, ok := seg.Find(strings.Join(words, ""))
 		if ok {
-			wordFreq = freq
+			wordFreq = v
 		}
 
-		if wordFreq < frequency {
-			frequency = wordFreq
+		if wordFreq < freq {
+			freq = wordFreq
 		}
 
-		return frequency
+		return freq
 	}
 
 	word := words[0]
 	for _, segment := range seg.Cut(word, false) {
-		freq, _, ok := seg.Find(segment)
+		v, _, ok := seg.Find(segment)
 		if ok {
-			frequency *= freq
+			freq *= v
 		}
 
-		frequency /= total
+		freq /= total
 	}
 
-	frequency, _ = math.Modf(frequency * total)
-	frequency += 1.0
+	freq, _ = math.Modf(freq * total)
+	freq += 1.0
 	wordFreq := 1.0
 
-	freq, _, ok := seg.Find(word)
+	v, _, ok := seg.Find(word)
 	if ok {
-		wordFreq = freq
+		wordFreq = v
 	}
 
-	if wordFreq > frequency {
-		frequency = wordFreq
+	if wordFreq > freq {
+		freq = wordFreq
 	}
 
-	return frequency
+	return freq
 }

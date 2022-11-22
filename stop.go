@@ -22,7 +22,7 @@ import (
 	"strings"
 )
 
-// StopWordMap default contains some stop words.
+// StopWordMap the default stop words.
 var StopWordMap = map[string]bool{
 	" ": true,
 }
@@ -46,13 +46,13 @@ func (seg *Segmenter) LoadStop(files ...string) error {
 
 	dictDir := path.Join(path.Dir(GetCurrentFilePath()), "data")
 	if len(files) <= 0 {
-		dictPath := path.Join(dictDir, "dict/stop_word.txt")
+		dictPath := path.Join(dictDir, "dict/zh/stop_word.txt")
 		files = append(files, dictPath)
 	}
 
 	name := strings.Split(files[0], ", ")
 	if name[0] == "zh" {
-		name[0] = path.Join(dictDir, "dict/stop_tokens.txt")
+		name[0] = path.Join(dictDir, "dict/zh/stop_tokens.txt")
 	}
 
 	for i := 0; i < len(name); i++ {
@@ -79,17 +79,28 @@ func (seg *Segmenter) LoadStop(files ...string) error {
 	return nil
 }
 
-// AddStop add a token into StopWord dictionary.
+// AddStop add a token to the StopWord dictionary.
 func (seg *Segmenter) AddStop(text string) {
 	seg.StopWordMap[text] = true
 }
 
-// RemoveStop remove a token into StopWord dictionary.
+// AddStopArr add array stop token to stop dictionaries
+func (seg *Segmenter) AddStopArr(text ...string) {
+	seg.LoadStopArr(text)
+}
+
+// RemoveStop remove a token from the StopWord dictionary.
 func (seg *Segmenter) RemoveStop(text string) {
 	delete(seg.StopWordMap, text)
 }
 
-// IsStop checks if a given word is stop word.
+// EmptyStop empty the stop dictionary
+func (seg *Segmenter) EmptyStop() error {
+	seg.StopWordMap = nil
+	return nil
+}
+
+// IsStop check the word is a stop word.
 func (seg *Segmenter) IsStop(s string) bool {
 	_, ok := seg.StopWordMap[s]
 	return ok

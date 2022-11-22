@@ -15,6 +15,51 @@
 
 package gse
 
+// AnalyzeToken analyze the segment info structure
+type AnalyzeToken struct {
+	// 分词在文本中的起始位置
+	Start int
+	End   int
+
+	Position int
+	Len      int
+
+	Type string
+
+	Text string
+	Freq float64
+	Pos  string
+}
+
+// Segment 文本中的一个分词
+type Segment struct {
+	// 分词在文本中的起始字节位置
+	start int
+
+	// 分词在文本中的结束字节位置（不包括该位置）
+	end int
+
+	Position int
+
+	// 分词信息
+	token *Token
+}
+
+// Start 返回分词在文本中的起始字节位置
+func (s *Segment) Start() int {
+	return s.start
+}
+
+// End 返回分词在文本中的结束字节位置（不包括该位置）
+func (s *Segment) End() int {
+	return s.end
+}
+
+// Token 返回分词信息
+func (s *Segment) Token() *Token {
+	return s.token
+}
+
 // Text 字串类型，可以用来表达
 //	1. 一个字元，比如 "世" 又如 "界", 英文的一个字元是一个词
 //	2. 一个分词，比如 "世界" 又如 "人口"
@@ -27,15 +72,15 @@ type Token struct {
 	text []Text
 
 	// 分词在语料库中的词频
-	frequency float64
+	freq float64
+
+	// 词性标注
+	pos string
 
 	// log2(总词频/该分词词频)，这相当于 log2(1/p(分词))，用作动态规划中
 	// 该分词的路径长度。求解 prod(p(分词)) 的最大值相当于求解
 	// sum(distance(分词)) 的最小值，这就是“最短路径”的来历。
 	distance float32
-
-	// 词性标注
-	pos string
 
 	// 该分词文本的进一步分词划分，见 Segments 函数注释。
 	segments []*Segment
@@ -46,9 +91,9 @@ func (token *Token) Text() string {
 	return textSliceToString(token.text)
 }
 
-// Frequency 返回分词在语料库中的词频
-func (token *Token) Frequency() float64 {
-	return token.frequency
+// Freq 返回分词在语料库中的词频
+func (token *Token) Freq() float64 {
+	return token.freq
 }
 
 // Pos 返回分词词性标注

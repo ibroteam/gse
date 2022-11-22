@@ -1,6 +1,7 @@
 # gse
 
-Go efficient text segmentation; support english, chinese, japanese and other. And supports with elasticsearch.
+Go efficient multilingual NLP and text segmentation; support English, Chinese, Japanese and others. 
+And supports with [elasticsearch](https://github.com/vcaesar/go-gse-elastic) and [bleve](https://github.com/vcaesar/gse-bleve).
 
 <!--<img align="right" src="https://raw.githubusercontent.com/go-ego/ego/master/logo.jpg">-->
 <!--<a href="https://circleci.com/gh/go-ego/ego/tree/dev"><img src="https://img.shields.io/circleci/project/go-ego/ego/dev.svg" alt="Build Status"></a>-->
@@ -19,14 +20,27 @@ Go efficient text segmentation; support english, chinese, japanese and other. An
 
 [简体中文](https://github.com/go-ego/gse/blob/master/README_zh.md)
 
-<a href="https://github.com/go-ego/gse/blob/master/dictionary.go">Dictionary </a> with double array trie (Double-Array Trie) to achieve,
-<a href="https://github.com/go-ego/gse/blob/master/segmenter.go">Sender </a> algorithm is the shortest path based on word frequency plus dynamic programming, and DAG and HMM algorithm word segmentation.
+Gse is implements jieba by golang, and try add NLP support and more feature
 
-Support common, search engine, full mode, precise mode and HMM mode multiple word segmentation modes, support user dictionary, POS tagging, run<a href="https://github.com/go-ego/gse/blob/master/server/server.go"> JSON RPC service</a>.
+## Feature:
+- Support common, search engine, full mode, precise mode and HMM mode multiple word segmentation modes; 
+- Support user and embed dictionary, Part-of-speech/POS tagging, analyze segment info, stop and trim words
+- Support multilingual: English, Chinese, Japanese and others
+- Support Traditional Chinese
+- Support HMM cut text use Viterbi algorithm
+- Support NLP by TensorFlow (in work)
+- Named Entity Recognition (in work) 
+- Supports with [elasticsearch](https://github.com/vcaesar/go-gse-elastic) and bleve
+- run<a href="https://github.com/go-ego/gse/blob/master/tools/server/server.go"> JSON RPC service</a>.
 
-Support HMM cut text use Viterbi algorithm.
+## Algorithm:
+- [Dictionary](https://github.com/go-ego/gse/blob/master/dictionary.go) with double array trie (Double-Array Trie) to achieve
+- [Segmenter](https://github.com/go-ego/gse/blob/master/dag.go) algorithm is the shortest path (based on word frequency and dynamic programming), and DAG and HMM algorithm word segmentation.
 
-Text Segmentation speed<a href="https://github.com/go-ego/gse/blob/master/benchmark/benchmark.go"> single thread</a> 9.2MB/s，<a href="https://github.com/go-ego/gse/blob/master/benchmark/goroutines/goroutines.go">goroutines concurrent</a> 26.8MB/s. HMM text segmentation single thread 3.2MB/s. (2core 4threads Macbook Pro).
+## Text Segmentation speed:
+- <a href="https://github.com/go-ego/gse/blob/master/tools/benchmark/benchmark.go"> single thread</a> 9.2MB/s
+- <a href="https://github.com/go-ego/gse/blob/master/tools/benchmark/goroutines/goroutines.go">goroutines concurrent</a> 26.8MB/s. 
+- HMM text segmentation single thread 3.2MB/s. (2core 4threads Macbook Pro).
 
 ## Binding:
 
@@ -34,6 +48,12 @@ Text Segmentation speed<a href="https://github.com/go-ego/gse/blob/master/benchm
 
 ## Install / update
 
+With Go module support (Go 1.11+), just import:
+```go
+import "github.com/go-ego/gse"
+```
+
+Otherwise, to install the gse package, run the command:
 ```
 go get -u github.com/go-ego/gse
 ```
@@ -45,13 +65,14 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/go-ego/gse"
 	"github.com/go-ego/gse/hmm/pos"
 )
 
 var (
-	text = "Hello world, Helloworld. Winter is coming! 你好世界."
+	text = "Hello world, Helloworld. Winter is coming! こんにちは世界, 你好世界."
 
 	new, _ = gse.New("zh,testdata/test_dict3.txt", "alpha")
 
@@ -60,6 +81,24 @@ var (
 )
 
 func main() {
+	// Loading the default dictionary
+	seg.LoadDict()
+	// Loading the default dictionary with embed
+	// seg.LoadDictEmbed()
+	// 
+	// Loading the Simplified Chinese dictionary
+	// seg.LoadDict("zh_s")
+	// seg.LoadDictEmbed("zh_s")
+	//
+	// Loading the Traditional Chinese dictionary
+	// seg.LoadDict("zh_t")
+	// 
+	// Loading the Japanese dictionary
+	// seg.LoadDict("jp")
+	// 
+	// Load the dictionary
+	// seg.LoadDict("your gopath"+"/src/github.com/go-ego/gse/data/dict/dictionary.txt")
+
 	cut()
 
 	segCut()
@@ -71,13 +110,19 @@ func cut() {
 
 	hmm = new.CutSearch(text, true)
 	fmt.Println("cut search use hmm: ", hmm)
+	fmt.Println("analyze: ", new.Analyze(hmm, text))
 
 	hmm = new.CutAll(text)
 	fmt.Println("cut all: ", hmm)
+
+	reg := regexp.MustCompile(`(\d+年|\d+月|\d+日|[\p{Latin}]+|[\p{Hangul}]+|\d+\.\d+|[a-zA-Z0-9]+)`)
+	text1 := `헬로월드 헬로 서울, 2021年09月10日, 3.14`
+	hmm = seg.CutDAG(text1, reg)
+	fmt.Println("Cut with hmm and regexp: ", hmm, hmm[0], hmm[6])
 }
 
 func analyzeAndTrim(cut []string) {
-	a := seg.Analyze(cut)
+	a := seg.Analyze(cut, "")
 	fmt.Println("analyze the segment: ", a)
 
 	cut = seg.Trim(cut)
@@ -102,22 +147,12 @@ func cutPos() {
 }
 
 func segCut() {
-	// Loading the default dictionary
-	seg.LoadDict()
-	// Load the dictionary
-	// seg.LoadDict("your gopath"+"/src/github.com/go-ego/gse/data/dict/dictionary.txt")
-
 	// Text Segmentation
 	tb := []byte(text)
 	fmt.Println(seg.String(text, true))
 
 	segments := seg.Segment(tb)
-
-	// Handle word segmentation results
-	// Support for normal mode and search mode two participle,
-	// see the comments in the code ToString function.
-	// The search mode is mainly used to provide search engines
-	// with as many keywords as possible
+	// Handle word segmentation results, search mode
 	fmt.Println(gse.ToString(segments, true))
 }
 
@@ -130,18 +165,27 @@ package main
 
 import (
 	"fmt"
+	_ "embed"
 
 	"github.com/go-ego/gse"
 )
 
-func main() {
-	var seg gse.Segmenter
-	seg.LoadDict("zh,testdata/test_dict.txt,testdata/test_dict1.txt")
-	seg.LoadStop()
-	// seg.LoadDictEmbed()
-	// seg.LoadStopEmbed()
+//go:embed test_dict3.txt
+var testDict string
 
-	text1 := "你好世界, Hello world"
+func main() {
+	// var seg gse.Segmenter
+	// seg.LoadDict("zh, testdata/test_dict.txt, testdata/test_dict1.txt")
+	// seg.LoadStop()
+	seg, err := gse.NewEmbed("zh, word 20 n"+testDict, "en")
+	// seg.LoadDictEmbed()
+	seg.LoadStopEmbed()
+
+	text1 := "Hello world, こんにちは世界, 你好世界!"
+	s1 := seg.Cut(text1, true)
+	fmt.Println(s1)
+	fmt.Println("trim: ", seg.Trim(s1))
+	fmt.Println("stop: ", seg.Stop(s1))
 	fmt.Println(seg.String(text1, true))
 
 	segments := seg.Segment([]byte(text1))
@@ -158,29 +202,6 @@ How to use it with elasticsearch?
 
 [go-gse-elastic](https://github.com/vcaesar/go-gse-elastic)
 
-
-## [Build-tools](https://github.com/go-ego/re)
-
-```
-go get -u github.com/go-ego/re
-```
-
-### re gse
-
-To create a new gse application
-
-```
-$ re gse my-gse
-```
-
-### re run
-
-To run the application we just created, you can navigate to the application folder and execute:
-
-```
-$ cd my-gse && re run
-```
-
 ## Authors
 
 - [Maintainers](https://github.com/orgs/go-ego/people)
@@ -188,4 +209,7 @@ $ cd my-gse && re run
 
 ## License
 
-Gse is primarily distributed under the terms of both the MIT license and the Apache License (Version 2.0), thanks for [sego](https://github.com/huichen/sego) and [jieba](https://github.com/fxsjy/jieba)([jiebago](https://github.com/wangbin/jiebago)).
+Gse is primarily distributed under the terms of "both the MIT license and the Apache License (Version 2.0)". 
+See [LICENSE-APACHE](http://www.apache.org/licenses/LICENSE-2.0), [LICENSE-MIT](https://github.com/go-vgo/robotgo/blob/master/LICENSE).
+
+Thanks for [sego](https://github.com/huichen/sego) and [jieba](https://github.com/fxsjy/jieba)([jiebago](https://github.com/wangbin/jiebago)).

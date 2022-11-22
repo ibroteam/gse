@@ -1,22 +1,20 @@
 // Copyright 2013 Hui Chen
 // Copyright 2016 ego authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License"): you may
-// not use this file except in compliance with the License. You may obtain
-// a copy of the License at
+// Copyright 2016 The go-ego Project Developers. See the COPYRIGHT
+// file at the top-level directory of this distribution and at
+// https://github.com/go-ego/gse/blob/master/LICENSE
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-// License for the specific language governing permissions and limitations
-// under the License.
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
 
 package gse
 
 import (
-	"github.com/go-ego/cedar"
+	"github.com/vcaesar/cedar"
 )
 
 // Dictionary 结构体实现了一个字串双数组树，
@@ -24,9 +22,9 @@ import (
 type Dictionary struct {
 	trie *cedar.Cedar // Cedar 双数组树
 
-	maxTokenLen    int     // 词典中最长的分词
-	Tokens         []Token // 词典中所有的分词，方便遍历
-	totalFrequency float64 // 词典中所有分词的频率之和
+	maxTokenLen int     // 词典中最长的分词
+	Tokens      []Token // 词典中所有的分词，方便遍历
+	totalFreq   float64 // 词典中所有分词的频率之和
 }
 
 // NewDict new dictionary
@@ -46,11 +44,11 @@ func (dict *Dictionary) NumTokens() int {
 
 // TotalFreq 词典中所有分词的频率之和
 func (dict *Dictionary) TotalFreq() float64 {
-	return dict.totalFrequency
+	return dict.totalFreq
 }
 
-// addToken 向词典中加入一个分词
-func (dict *Dictionary) addToken(token Token) error {
+// AddToken 向词典中加入一个分词
+func (dict *Dictionary) AddToken(token Token) error {
 	bytes := textSliceToBytes(token.text)
 	val, err := dict.trie.Get(bytes)
 	if err == nil || val > 0 {
@@ -63,7 +61,7 @@ func (dict *Dictionary) addToken(token Token) error {
 	}
 
 	dict.Tokens = append(dict.Tokens, token)
-	dict.totalFrequency += token.frequency
+	dict.totalFreq += token.freq
 
 	if len(token.text) > dict.maxTokenLen {
 		dict.maxTokenLen = len(token.text)
@@ -127,7 +125,7 @@ func (dict *Dictionary) Find(word []byte) (float64, string, bool) {
 		return 0, "", false
 	}
 
-	freq = dict.Tokens[value].frequency
+	freq = dict.Tokens[value].freq
 	pos := dict.Tokens[value].pos
 	return freq, pos, true
 }

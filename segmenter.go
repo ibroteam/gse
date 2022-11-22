@@ -47,8 +47,9 @@ type Segmenter struct {
 
 	// SkipPos skip PosStr pos
 	SkipPos bool
+
 	NotStop bool
-	// StopWordMap stop word map
+	// StopWordMap the stop word map
 	StopWordMap map[string]bool
 }
 
@@ -133,7 +134,7 @@ func (seg *Segmenter) segmentWords(text []Text, searchMode bool) []Segment {
 		// 当前字元没有对应分词时补加一个伪分词
 		if numTokens == 0 || len(tokens[0].text) > 1 {
 			updateJumper(&jumpers[current], baseDistance,
-				&Token{text: []Text{text[current]}, frequency: 1, distance: 32, pos: "x"})
+				&Token{text: []Text{text[current]}, freq: 1, distance: 32, pos: "x"})
 		}
 	}
 

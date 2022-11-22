@@ -20,7 +20,7 @@ func TestGetVer(t *testing.T) {
 	ver := GetVersion()
 
 	tt.Expect(t, Version, ver)
-	expect(t, Version, ver)
+	tt.Expect(t, Version, ver)
 	tt.Equal(t, Version, ver)
 }
 
@@ -83,7 +83,21 @@ func TestSegment(t *testing.T) {
 func TestSegmentJp(t *testing.T) {
 	var seg Segmenter
 	// SkipLog = true
-	seg.LoadDict("data/dict/jp/dict.txt")
+	err := seg.LoadDict("data/dict/jp/dict.txt")
+	tt.Nil(t, err)
+	tt.Equal(t, 794146, len(seg.Dict.Tokens))
+	tt.Equal(t, 4.784183005e+09, seg.Dict.totalFreq)
+
+	f, pos, ok := seg.Find("自由")
+	tt.Bool(t, ok)
+	tt.Equal(t, "名詞", pos)
+	tt.Equal(t, 3636, f)
+
+	f, pos, ok = seg.Find("此の度")
+	tt.Bool(t, ok)
+	tt.Equal(t, "名詞", pos)
+	tt.Equal(t, 5257, f)
+
 	segments := seg.Segment(testH)
 
 	tt.Expect(t, "こんにちは/感動詞 世界/名詞 ", ToString(segments, false))
@@ -98,7 +112,7 @@ func TestSegmentJp(t *testing.T) {
 
 	token := segments[0].Token()
 	tt.Expect(t, "こんにちは", token.Text())
-	tt.Expect(t, "5704", token.Frequency())
+	tt.Expect(t, "5704", token.Freq())
 	tt.Expect(t, "感動詞", token.Pos())
 
 	var tokenArr []*Token
@@ -147,7 +161,7 @@ func TestToken(t *testing.T) {
 
 	dict := seg.Dictionary()
 	tt.Expect(t, "16", dict.MaxTokenLen())
-	tt.Expect(t, "5.3250742e+07", dict.TotalFreq())
+	tt.Equal(t, 5.3226765e+07, dict.TotalFreq())
 
 	freq, pos, ok := dict.Find([]byte("世界"))
 	tt.Equal(t, 34387, freq)
@@ -167,8 +181,8 @@ func TestToken(t *testing.T) {
 	tt.False(t, ok)
 
 	val, id, err := seg.Value("帝国")
-	tt.Equal(t, 147099, val)
-	tt.Equal(t, 42712, id)
+	tt.Equal(t, 96493, val)
+	tt.Equal(t, 597213, id)
 	tt.Nil(t, err)
 
 	err = seg.AddToken("伦敦摘星塔", 100)
@@ -188,10 +202,18 @@ func TestToken(t *testing.T) {
 
 	err = prodSeg.AddToken("西雅图中心", 100)
 	tt.Nil(t, err)
-	err = prodSeg.AddToken("西雅图太空针", 100, "n")
+
+	err = prodSeg.AddToken("西雅图太空针", 100)
 	tt.Nil(t, err)
 	freq, pos, ok = prodSeg.Find("西雅图太空针")
 	tt.Equal(t, 100, freq)
+	tt.Equal(t, "", pos)
+	tt.True(t, ok)
+
+	err = prodSeg.ReAddToken("西雅图太空针", 200, "n")
+	tt.Nil(t, err)
+	freq, pos, ok = prodSeg.Find("西雅图太空针")
+	tt.Equal(t, 200, freq)
 	tt.Equal(t, "n", pos)
 	tt.True(t, ok)
 
@@ -206,17 +228,18 @@ func TestToken(t *testing.T) {
 func TestDictPaths(t *testing.T) {
 	// seg.SkipLog = true
 	paths := DictPaths("./dictDir", "zh, jp")
-	tt.Expect(t, "2", len(paths))
+	tt.Expect(t, "3", len(paths))
 
-	tt.Expect(t, "dictDir/dict/dictionary.txt", paths[0])
-	tt.Expect(t, "dictDir/dict/jp/dict.txt", paths[1])
+	tt.Expect(t, "dictDir/dict/zh/t_1.txt", paths[0])
+	tt.Expect(t, "dictDir/dict/zh/s_1.txt", paths[1])
+	tt.Expect(t, "dictDir/dict/jp/dict.txt", paths[2])
 
 	paths1 := DictPaths("./dictDir", "zh, jp")
-	tt.Expect(t, "2", len(paths))
+	tt.Expect(t, "3", len(paths))
 	tt.Equal(t, paths, paths1)
 
 	p := strings.ReplaceAll(GetCurrentFilePath(), "/segmenter_test.go", "") +
-		`/data/idf.txt`
+		`/data/dict/zh/idf.txt`
 	tt.Equal(t, "["+p+"]", GetIdfPath([]string{}...))
 }
 
@@ -245,9 +268,9 @@ func TestInAlphaNum(t *testing.T) {
 
 	tx = seg.Cut(text, false)
 	tt.Equal(t, 11, len(tx))
-	tt.Equal(t, "[hello world !   你好 世界 ,   Hello world .]", tx)
+	tt.Equal(t, "[hello world !   你好 世界 ,   hello world .]", tx)
 
 	tx = seg.Cut(text, true)
 	tt.Equal(t, 9, len(tx))
-	tt.Equal(t, "[hello world !  你好 世界 ,  Hello world .]", tx)
+	tt.Equal(t, "[hello world !  你好 世界 ,  hello world .]", tx)
 }

@@ -31,7 +31,7 @@ var (
 //
 // }
 
-// LoadModel load HMM model
+// LoadModel load the HMM model
 func LoadModel(prob ...map[rune]float64) {
 	if len(prob) > 3 {
 		probEmit['B'] = prob[0]
@@ -45,10 +45,10 @@ func LoadModel(prob ...map[rune]float64) {
 	loadDefEmit()
 }
 
-func internalCut(sentence string) []string {
+func internalCut(text string) []string {
 	result := make([]string, 0, 10)
 
-	runes := []rune(sentence)
+	runes := []rune(text)
 	_, posList := Viterbi(runes, []byte{'B', 'M', 'E', 'S'})
 	begin, next := 0, 0
 
@@ -73,69 +73,77 @@ func internalCut(sentence string) []string {
 	return result
 }
 
-// Cut cuts sentence into words using HMM with Viterbi algorithm
-func Cut(sentence string) []string {
+// Cut cuts text to words using HMM with Viterbi algorithm
+func Cut(text string, reg ...*regexp.Regexp) []string {
 	result := make([]string, 0, 10)
 
 	var (
-		hans      string
-		hanLoc    []int
-		nonHanLoc []int
+		cuts      string
+		cutLoc    []int
+		nonCutLoc []int
 	)
 
 	for {
-		// find(sentence, hans, hanLoc, nonHanLoc)
+		// find(text, cuts, cutLoc, nonCutLoc)
+		if len(reg) > 1 {
+			cutLoc = reg[1].FindStringIndex(text)
+		} else {
+			cutLoc = regHan.FindStringIndex(text)
+		}
 
-		hanLoc = regHan.FindStringIndex(sentence)
-		if hanLoc == nil {
-			if len(sentence) == 0 {
+		if cutLoc == nil {
+			if len(text) == 0 {
 				break
 			}
-		} else if hanLoc[0] == 0 {
-			hans = sentence[hanLoc[0]:hanLoc[1]]
-			sentence = sentence[hanLoc[1]:]
-			result = append(result, internalCut(hans)...)
+		} else if cutLoc[0] == 0 {
+			cuts = text[cutLoc[0]:cutLoc[1]]
+			text = text[cutLoc[1]:]
+			result = append(result, internalCut(cuts)...)
 			continue
 		}
 
-		nonHanLoc = regSkip.FindStringIndex(sentence)
-		if nonHanLoc == nil {
-			if len(sentence) == 0 {
+		if len(reg) > 0 {
+			nonCutLoc = reg[0].FindStringIndex(text)
+		} else {
+			nonCutLoc = regSkip.FindStringIndex(text)
+		}
+		if nonCutLoc == nil {
+			if len(text) == 0 {
 				break
 			}
-		} else if nonHanLoc[0] == 0 {
-			nonHans := sentence[nonHanLoc[0]:nonHanLoc[1]]
-			sentence = sentence[nonHanLoc[1]:]
-			if nonHans != "" {
-				result = append(result, nonHans)
+		} else if nonCutLoc[0] == 0 {
+			nonCuts := text[nonCutLoc[0]:nonCutLoc[1]]
+			text = text[nonCutLoc[1]:]
+			if nonCuts != "" {
+				result = append(result, nonCuts)
 				continue
 			}
 		}
 
-		loc := locJudge(sentence, hanLoc, nonHanLoc)
+		loc := locJudge(text, cutLoc, nonCutLoc)
 		if loc == nil {
-			result = append(result, sentence)
+			result = append(result, text)
 			break
 		}
 
-		result = append(result, sentence[:loc[0]])
-		sentence = sentence[loc[0]:]
+		result = append(result, text[:loc[0]])
+		text = text[loc[0]:]
 	}
 
 	return result
 }
 
-func locJudge(str string, hanLoc, nonHanLoc []int) (loc []int) {
-	if hanLoc == nil && nonHanLoc == nil {
+func locJudge(str string, cutLoc, nonCutLoc []int) (loc []int) {
+	if cutLoc == nil && nonCutLoc == nil {
 		if len(str) > 0 {
 			return nil
 		}
-	} else if hanLoc == nil {
-		loc = nonHanLoc
-	} else if nonHanLoc == nil || hanLoc[0] < nonHanLoc[0] {
-		loc = hanLoc
+	} else if cutLoc == nil {
+		loc = nonCutLoc
+	} else if nonCutLoc == nil || cutLoc[0] < nonCutLoc[0] {
+		loc = cutLoc
 	} else {
-		loc = nonHanLoc
+		loc = nonCutLoc
 	}
 
 	return
